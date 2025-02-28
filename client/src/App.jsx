@@ -1,15 +1,20 @@
-import './App.css'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import HomePage from "./Pages/HomePage";
+import UploadPage from "./Pages/UploadPage";
+import ViewMediaPage from "./Pages/ViewMediaPage";
+import WelcomeAnimation from "./Components/WelcomeAnimation";
 
 function App() {
-  
-
   return (
-    <>
-      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-        <h1 className="text-4xl font-bold">Hello, Tailwind + Vite! 🚀</h1>
-      </div>
-    </>
+    <Router>
+      <Routes>
+        <Route path="/" element={<WelcomeAnimation />} />
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/upload" element={<UploadPage />} />
+        <Route path="/view-media" element={<ViewMediaPage />} />
+      </Routes>
+    </Router>
   );
 }
 
-export default App
+export default App;
