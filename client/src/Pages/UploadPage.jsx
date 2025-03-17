@@ -4,6 +4,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { IoArrowBack } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 
 const Container = styled.div`
@@ -126,6 +127,8 @@ const UploadPage = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const navigate = useNavigate();
 
+  const backend_url = "http://localhost:5003/api/upload";
+
   const handleFileChange = (event) => {
     if (event.target.files.length > 0) {
       setSelectedFile(event.target.files[0]);
@@ -134,21 +137,35 @@ const UploadPage = () => {
     }
   };
 
-  const handleUpload = () => {
-    // Validation Checks
-    if (!fileType) {
-      toast.error("Please select a file type before uploading!");
-      return;
-    }
+const handleUpload = async () => {
+  if (!fileType) {
+    toast.error("Please select a file type before uploading!");
+    return;
+  }
 
-    if (!selectedFile) {
-      toast.error("Please choose a file to upload!");
-      return;
-    }
+  if (!selectedFile) {
+    toast.error("Please choose a file to upload!");
+    return;
+  }
 
-    // Success Toast
+  const formData = new FormData();
+  formData.append("file", selectedFile);
+
+  try {
+    const response = await axios.post(backend_url, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
     toast.success(`"${selectedFile.name}" uploaded successfully!`);
-  };
+    console.log("File URL:", response.data.fileUrl);
+  } catch (error) {
+    console.error("Upload error:", error);
+    toast.error(error.response?.data?.error || "Upload failed");
+  }
+};
+
 
   return (
     <Container>
