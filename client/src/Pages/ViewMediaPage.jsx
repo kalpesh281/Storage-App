@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { IoArrowBack } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
+import axios from "axios"; // Make sure axios is installed
 
 const Container = styled.div`
   width: 100%;
@@ -111,23 +112,134 @@ const AudioPlayer = styled.audio`
   margin-left: 10px;
 `;
 
+// Loading indicator
+const LoadingSpinner = styled.div`
+  border: 4px solid rgba(0, 255, 204, 0.3);
+  border-radius: 50%;
+  border-top: 4px solid #00ffcc;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+// Error message
+const ErrorMessage = styled.div`
+  color: #ff6b6b;
+  background-color: rgba(255, 107, 107, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+  margin: 10px 0;
+  text-align: center;
+`;
+
 const ViewMediaPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [fileType, setFileType] = useState("audio");
+  const [mediaData, setMediaData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [audioUrls, setAudioUrls] = useState({});
   const navigate = useNavigate();
 
-  const mediaData = [
-    { id: 1, name: "Song1.mp3", type: "audio", url: "/downloads/song1.mp3" },
-    { id: 2, name: "Document1.pdf", type: "pdf", url: "/downloads/doc1.pdf" },
-    { id: 3, name: "Image1.jpg", type: "image", url: "/downloads/img1.jpg" },
-    { id: 4, name: "Song2.wav", type: "audio", url: "/downloads/song2.wav" },
-  ];
+  // API base URL - store in one place for easy changes
+  const API_BASE_URL = "http://localhost:5003/api/media";
 
-  const filteredMedia = mediaData.filter(
-    (item) =>
-      item.type === fileType &&
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Fetch media data based on selected type and search term
+  useEffect(() => {
+    const fetchMedia = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        let url;
+
+        if (searchTerm) {
+          url = `${API_BASE_URL}/search?query=${encodeURIComponent(
+            searchTerm
+          )}&type=${fileType}`;
+        } else {
+          url = `${API_BASE_URL}/type/${fileType}`;
+        }
+
+        const response = await axios.get(url);
+        const media = response.data.media || [];
+        setMediaData(media);
+
+        // Pre-fetch audio URLs if needed
+        if (fileType === "audio" && media.length > 0) {
+          // Create a new object to store the URLs
+          const urls = {};
+
+          // For each audio file, get a pre-signed URL
+          for (const file of media) {
+            try {
+              const urlResponse = await axios.get(
+                `${API_BASE_URL}/download/${encodeURIComponent(file.name)}`
+              );
+              urls[file.name] = urlResponse.data.downloadUrl;
+            } catch (err) {
+              console.error(`Failed to get URL for ${file.name}:`, err);
+            }
+          }
+
+          setAudioUrls(urls);
+        }
+      } catch (err) {
+        console.error("Error fetching media:", err);
+        setError("Failed to load media. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Debounce function to prevent excessive API calls during typing
+    const debounce = setTimeout(() => {
+      fetchMedia();
+    }, 500);
+
+    return () => clearTimeout(debounce);
+  }, [fileType, searchTerm]);
+
+  // Handle file download
+  const handleDownload = async (file) => {
+    try {
+      // If we already have a URL for this file, use it
+      if (audioUrls[file.name]) {
+        const link = document.createElement("a");
+        link.href = audioUrls[file.name];
+        link.setAttribute("download", file.name);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      // Otherwise get a new URL
+      const response = await axios.get(
+        `${API_BASE_URL}/download/${encodeURIComponent(file.name)}`
+      );
+
+      const link = document.createElement("a");
+      link.href = response.data.downloadUrl;
+      link.setAttribute("download", file.name);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Download error:", err);
+      setError("Failed to download file. Please try again.");
+    }
+  };
 
   return (
     <Container>
@@ -173,27 +285,45 @@ const ViewMediaPage = () => {
         </RadioLabel>
       </RadioGroup>
 
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+
       <MediaList>
-        {filteredMedia.length > 0 ? (
-          filteredMedia.map((file) => (
+        {loading ? (
+          <LoadingSpinner />
+        ) : mediaData.length > 0 ? (
+          mediaData.map((file) => (
             <MediaItem key={file.id}>
               <span>{file.name}</span>
               <ButtonContainer>
                 {file.type === "audio" ? (
                   <AudioPlayer controls>
-                    <source src={file.url} type="audio/mpeg" />
+                    {/* Use pre-signed URL for audio player if available */}
+                    <source
+                      src={
+                        audioUrls[file.name] ||
+                        `${API_BASE_URL}/stream/${encodeURIComponent(
+                          file.name
+                        )}`
+                      }
+                      type="audio/mpeg"
+                    />
                     Your browser does not support the audio element.
                   </AudioPlayer>
                 ) : (
-                  <a href={file.url} target="_blank" rel="noopener noreferrer">
-                    <Button>
-                      View {file.type === "pdf" ? "PDF" : "Image"}
-                    </Button>
-                  </a>
+                  <Button
+                    onClick={() =>
+                      window.open(
+                        `${API_BASE_URL}/stream/${encodeURIComponent(
+                          file.name
+                        )}`,
+                        "_blank"
+                      )
+                    }
+                  >
+                    View {file.type === "pdf" ? "PDF" : "Image"}
+                  </Button>
                 )}
-                <a href={file.url} download>
-                  <Button>Download</Button>
-                </a>
+                <Button onClick={() => handleDownload(file)}>Download</Button>
               </ButtonContainer>
             </MediaItem>
           ))
